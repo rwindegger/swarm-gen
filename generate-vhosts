@@ -6,7 +6,7 @@ DOCKER_SOCK=/var/run/docker.sock
 HOST_LABEL=${LABEL_PREFIX}.host
 PORT_LABEL=${LABEL_PREFIX}.backend.port
 
-SERVICES=$(curl -s -g --unix-socket ${DOCKER_SOCK} http:/services?filters={%22label%22:[%22${HOST_LABEL}%22]} | jq .)
+SERVICES=$(curl -s -g --unix-socket ${DOCKER_SOCK} http://docker/services?filters={%22label%22:[%22${HOST_LABEL}%22]} | jq .)
 SERVICE_NAMES=$(echo $SERVICES | jq .[].Spec.Name)
 
 for SERVICE_NAME in ${SERVICE_NAMES}
@@ -16,7 +16,7 @@ do
         VHOST=$(echo ${SERVICES} | jq ".[] | select(.Spec.Name == \"${SERVICE_NAME}\") | .Spec.Labels[\"${HOST_LABEL}\"]" | tr -d '"')
         PORT=$(echo ${SERVICES} | jq ".[] | select(.Spec.Name == \"${SERVICE_NAME}\") | .Spec.Labels[\"${PORT_LABEL}\"]" | tr -d '"')
 
-        HOSTS=$(curl -s -g --unix-socket ${DOCKER_SOCK} http:/tasks?filters={%22service%22:[%22${SERVICE_NAME}%22]} | jq "[.[] | select(.Status.State == \"running\") | {id:.ID, slot:.Slot, state:.Status.State, data:.}]")
+        HOSTS=$(curl -s -g --unix-socket ${DOCKER_SOCK} http://docker/tasks?filters={%22service%22:[%22${SERVICE_NAME}%22]} | jq "[.[] | select(.Status.State == \"running\") | {id:.ID, slot:.Slot, state:.Status.State, data:.}]")
         HOST_NAMES=$(echo "${HOSTS}" | jq ".[] | \"${SERVICE_NAME}.\" + (.slot | tostring) + \".\" + .id" | tr -d '"')
 
         echo "upstream ${SERVICE_NAME} {"
