@@ -26,7 +26,7 @@ frontend http-in
 backend default
 	errorfile 503 /usr/local/etc/haproxy/invalid.http
 {{#services}}
-	{{#tasks.length}}
+	{{#isActive}}
 	
 backend {{name}}
 	balance roundrobin
@@ -35,5 +35,5 @@ backend {{name}}
 		{{#tasks}}
 	server {{id}} {{hostname}}:{{port}} maxconn 15 check inter 10000 cookie {{id}}
 		{{/tasks}}
-	{{/tasks.length}}
+	{{/isActive}}
 {{/services}}

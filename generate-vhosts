@@ -79,6 +79,7 @@ function get_service_data {
 			local HOSTS=$(echo ${HOSTS} | jq "{ tasks:[ .[] | select(.Status.State == \"running\") | { id:.ID, hostname:\"${SERVICE_NAME}.\(.Slot | tostring).\(.ID)\", data:. } ] }")
 			
 			local SERVICE=$(echo "[${SERVICE}, ${HOSTS}]" | jq add)
+			local SERVICE=$(echo "${SERVICE}" | jq ".isActive = ((.tasks | length) != 0)")
 			local SERVICE_RESULT=$(echo "[ ${SERVICE_RESULT}, [ ${SERVICE} ] ]" | jq add)
 	done
 	

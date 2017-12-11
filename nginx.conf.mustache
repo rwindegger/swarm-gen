@@ -8,7 +8,7 @@ server {
 	return 503;
 }
 {{#services}}
-	{{#tasks.length}}
+	{{#isActive}}
 upstream {{name}} {
 	hash $remote_addr consistent;
 		{{#tasks}}
@@ -34,5 +34,5 @@ server {
 		proxy_set_header Connection "";
 	}
 }
-	{{/tasks.length}}
+	{{/isActive}}
 {{/services}}
