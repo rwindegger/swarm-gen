@@ -15,6 +15,8 @@ defaults
 	timeout connect 5000ms
 	timeout client 50000ms
 	timeout server 50000ms
+	http-request set-header X-Forwarded-Port %[dst_port]
+	http-request add-header X-Forwarded-Proto https if { ssl_fc }
 	stats enable
 
 frontend http-in
@@ -24,14 +26,14 @@ frontend http-in
 backend default
 	errorfile 503 /usr/local/etc/haproxy/invalid.http
 {{#services}}
-
+	{{#tasks.length}}
+	
 backend {{name}}
 	balance roundrobin
 	cookie {{name}}_stick insert indirect nocache
-	http-request set-header X-Forwarded-Port %[dst_port]
-	http-request add-header X-Forwarded-Proto https if { ssl_fc }
 	option httpchk HEAD / HTTP/1.1\r\nHost:{{host}}
-	{{#tasks}}
+		{{#tasks}}
 	server {{id}} {{hostname}}:{{port}} maxconn 15 check inter 10000 cookie {{id}}
-	{{/tasks}}
+		{{/tasks}}
+	{{/tasks.length}}
 {{/services}}

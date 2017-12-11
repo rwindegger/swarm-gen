@@ -2,11 +2,6 @@
 LABEL_PREFIX=${1:-com.example}
 GENERATOR=${2:-haproxy}
 
-if [ ! -e "${OUTPUT_FILE}" ]
-then
-    touch "${OUTPUT_FILE}"
-fi
-
 DOCKER_SOCK=/var/run/docker.sock
 
 HOST_LABEL=${LABEL_PREFIX}.${GENERATOR}.host

@@ -8,12 +8,12 @@ server {
 	return 503;
 }
 {{#services}}
-
+	{{#tasks.length}}
 upstream {{name}} {
 	hash $remote_addr consistent;
-	{{#tasks}}
+		{{#tasks}}
 	server {{hostname}}:{{port}};
-	{{/tasks}}
+		{{/tasks}}
 }
 
 server {
@@ -34,4 +34,5 @@ server {
 		proxy_set_header Connection "";
 	}
 }
+	{{/tasks.length}}
 {{/services}}
