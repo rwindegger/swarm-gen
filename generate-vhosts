@@ -4,6 +4,8 @@ GENERATOR=${2:-haproxy}
 
 MYSQL_HOST=${MYSQL_HOST:-disabled}
 
+HOSTMASTER=${HOSTMASTER?hostmaster missing}
+
 if [ "${MYSQL_HOST}" != "disabled" ]
 then
 	MYSQL_USER=${MYSQL_USER?user missing}
@@ -95,7 +97,9 @@ function get_service_data {
 			local SERVICE_RESULT=$(echo "[ ${SERVICE_RESULT}, [ ${SERVICE} ] ]" | jq add)
 	done
 	
-	local SERVICE_RESULT=$(echo ${SERVICE_RESULT} | jq "{services:., recordtag:\"${ROOT_LABEL}\"}")
+	local CERTHOST=$(hostname)
+	
+	local SERVICE_RESULT=$(echo ${SERVICE_RESULT} | jq "{services:., certhost:\"${CERTHOST}\", recordtag:\"${ROOT_LABEL}\"}")
 	eval $result="'${SERVICE_RESULT}'"
 }
 
@@ -147,8 +151,11 @@ function cleanup {
 function handle_nginx {
 	local TEMPLATE=/etc/swarm-gen/nginx.conf.mustache
 	local OUTPUT_FILE=/etc/nginx/conf.d/hosts.conf
+	
 	generate_new_file NEW_FILE ${OUTPUT_FILE} ${TEMPLATE} "${DATA}"
+	
 	handle_file_change CHANGED ${NEW_FILE} ${OUTPUT_FILE}
+	
 	if [ "${CHANGED}" != "0" ]
 	then
 		echo "Configuration updated."
@@ -163,6 +170,7 @@ function handle_haproxy {
 	local TEMPLATE_MAP=/etc/swarm-gen/host.map.mustache
 	local OUTPUT_CONF=/usr/local/etc/haproxy/haproxy.cfg
 	local OUTPUT_MAP=/usr/local/etc/haproxy/host.map
+	
 	generate_new_file NEW_CONF ${OUTPUT_CONF} ${TEMPLATE_CONF} "${DATA}"
 	generate_new_file NEW_MAP ${OUTPUT_MAP} ${TEMPLATE_MAP} "${DATA}"
 	
@@ -180,6 +188,22 @@ function handle_haproxy {
 	fi
 }
 
+function update_certificates {
+	local TEMPLATE=/etc/swarm-gen/domainlist.mustache
+	local OUTPUT=/etc/swarm-gen/domainlist
+
+	generate_new_file NEW_FILE ${OUTPUT} ${TEMPLATE} "${DATA}"
+	echo ${DATA} | jq ".services[].host" | tr -d '"'
+	
+	handle_file_change CHANGED ${NEW_FILE} ${OUTPUT}
+	
+	if [ "${CHANGED}" != "0" ]
+	then	
+		echo "Generating a new certificate"
+		cat ${OUTPUT} | parallel --dry-run --semaphore --fg --jobs 1 -X certbot certonly --dry-run  --agree-tos --standalone --http-01-port 80 --preferred-challenges http --noninteractive --email "${HOSTMASTER}" --domain {}
+	fi
+}
+
 trap cleanup SIGINT SIGTERM
 
 while [ 1 ]
@@ -191,6 +215,7 @@ do
 	if [ "${GENERATOR}" == "haproxy" ]
 	then
 		handle_haproxy
+		update_certificates
 	else
 		handle_nginx
 	fi

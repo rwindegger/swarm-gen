@@ -21,8 +21,19 @@ defaults
 
 frontend http-in
 	bind *:80
+	acl is_certbot path_beg -i /.well-known/acme-challenge
+	use_backend certbot if is_certbot
+	use_backend %[req.hdr(host),lower,map(/usr/local/etc/haproxy/host.map,default)]
+	
+frontend https-in
+	bind *:443 ssl crt /usr/local/etc/haproxy/swarm-gen.pem
+	acl is_certbot path_beg -i /.well-known/acme-challenge
+	use_backend certbot if is_certbot
 	use_backend %[req.hdr(host),lower,map(/usr/local/etc/haproxy/host.map,default)]
 
+backend certbot
+	server certbot {{certhost}}:80 maxconn 15
+	
 backend default
 	errorfile 503 /usr/local/etc/haproxy/invalid.http
 {{#services}}
