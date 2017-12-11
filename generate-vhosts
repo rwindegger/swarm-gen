@@ -67,7 +67,7 @@ function generate_new_file {
 			echo "  listen 80;" >> ${TEMP_FILE}
 			echo "  access_log /var/log/nginx/access.log vhost;" >> ${TEMP_FILE}
 			echo "  location / {" >> ${TEMP_FILE}
-			echo "          proxy_pass http://${SERVICE_NAME}" >> ${TEMP_FILE}
+			echo "          proxy_pass http://${SERVICE_NAME};" >> ${TEMP_FILE}
 			echo "  }" >> ${TEMP_FILE}
 
 			echo "}" >> ${TEMP_FILE}
