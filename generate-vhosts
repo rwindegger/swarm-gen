@@ -2,11 +2,23 @@
 LABEL_PREFIX=${1:-com.example}
 GENERATOR=${2:-haproxy}
 
+MYSQL_HOST=${MYSQL_HOST:-disabled}
+
+if [ "${MYSQL_HOST}" != "disabled" ]
+then
+	MYSQL_USER=${MYSQL_USER?user missing}
+	MYSQL_PASS=${MYSQL_PASS?pass missing}
+	MYSQL_DB=${MYSQL_DB?db missing}
+fi
+
 DOCKER_SOCK=/var/run/docker.sock
 
-HOST_LABEL=${LABEL_PREFIX}.${GENERATOR}.host
-PORT_LABEL=${LABEL_PREFIX}.${GENERATOR}.backend.port
-UPDT_LABEL=${LABEL_PREFIX}.${GENERATOR}.frontend
+ROOT_LABEL=${LABEL_PREFIX}.${GENERATOR}
+ENDP_LABEL=${ROOT_LABEL}.host.endpoint
+DOMN_LABEL=${ROOT_LABEL}.host.domain
+HOST_LABEL=${ROOT_LABEL}.host
+PORT_LABEL=${ROOT_LABEL}.backend.port
+UPDT_LABEL=${ROOT_LABEL}.frontend
 
 function swarm_force_service_reload {
 	local id="${1?missing id}"
@@ -73,7 +85,7 @@ function get_service_data {
 			local SERVICE_NAME=$(echo ${SERVICE_NAME} | tr -d '"')
 			get_service SERVICE_DATA ${SERVICE_NAME}
 
-			local SERVICE=$(echo ${SERVICE_DATA} | jq "{ name:.Spec.Name, host:.Spec.Labels[\"${HOST_LABEL}\"], port:.Spec.Labels[\"${PORT_LABEL}\"], data:. }")
+			local SERVICE=$(echo ${SERVICE_DATA} | jq "{ name:.Spec.Name, domain:.Spec.Labels[\"${DOMN_LABEL}\"], endpoint:.Spec.Labels[\"${ENDP_LABEL}\"], host:.Spec.Labels[\"${HOST_LABEL}\"], port:.Spec.Labels[\"${PORT_LABEL}\"], data:. }")
 
 			get_filtered_data HOSTS "tasks" "{%22service%22:[%22${SERVICE_NAME}%22]}"
 			local HOSTS=$(echo ${HOSTS} | jq "{ tasks:[ .[] | select(.Status.State == \"running\") | { id:.ID, hostname:\"${SERVICE_NAME}.\(.Slot | tostring).\(.ID)\", data:. } ] }")
@@ -83,13 +95,32 @@ function get_service_data {
 			local SERVICE_RESULT=$(echo "[ ${SERVICE_RESULT}, [ ${SERVICE} ] ]" | jq add)
 	done
 	
-	local SERVICE_RESULT=$(echo ${SERVICE_RESULT} | jq "{services:.}")
+	local SERVICE_RESULT=$(echo ${SERVICE_RESULT} | jq "{services:., recordtag:\"${ROOT_LABEL}\"}")
 	eval $result="'${SERVICE_RESULT}'"
 }
 
+function update_dns {
+#	if [ "${MYSQL_HOST}" != "disabled" ]
+#	then
+		local TEMPLATE=/etc/swarm-gen/updatepdns.sql.mustache
+		local OUTPUT=/etc/swarm-gen/updatepdns.sql
+		
+		generate_new_file NEW_CONF ${OUTPUT} ${TEMPLATE} "${DATA}"
+		
+		handle_file_change CHANGED ${NEW_CONF} ${OUTPUT}
+		
+		if [ "${CHANGED}" != "0" ]
+		then
+			echo "Send query."
+		fi
+#	fi
+}
+
 function handle_file_change {
-	local FILE1="${1?missing file1}"
-	local FILE2="${2?missing file2}"
+	local result=$1
+	
+	local FILE1="${2?missing file1}"
+	local FILE2="${3?missing file2}"
 	
 	touch ${FILE1}
 	touch ${FILE2}
@@ -98,12 +129,11 @@ function handle_file_change {
 		
 	if [ ${CHANGED_LINES} -gt 0 ]
 	then
-		echo "Configuration updated."
 		mv -f "${FILE1}" "${FILE2}"
-		notify_containers
+		eval $result=1
 	else
-		echo "Configuration unchanged."
 		rm "${FILE1}"
+		eval $result=0
 	fi
 }
 
@@ -115,7 +145,14 @@ function handle_nginx {
 	local TEMPLATE=/etc/swarm-gen/nginx.conf.mustache
 	local OUTPUT_FILE=/etc/nginx/conf.d/hosts.conf
 	generate_new_file NEW_FILE ${OUTPUT_FILE} ${TEMPLATE} "${DATA}"
-	handle_file_change ${NEW_FILE} ${OUTPUT_FILE}
+	handle_file_change CHANGED ${NEW_FILE} ${OUTPUT_FILE}
+	if [ "${CHANGED}" != "0" ]
+	then
+		echo "Configuration updated."
+		notify_containers
+	else
+		echo "Configuration unchanged."
+	fi
 }
 
 function handle_haproxy {
@@ -128,8 +165,16 @@ function handle_haproxy {
 	
 	cp /etc/swarm-gen/invalid.http /usr/local/etc/haproxy/invalid.http
 	
-	handle_file_change ${NEW_CONF} ${OUTPUT_CONF}
-	handle_file_change ${NEW_MAP} ${OUTPUT_MAP}
+	handle_file_change CONF_CHANGED ${NEW_CONF} ${OUTPUT_CONF}
+	handle_file_change MAP_CHANGED ${NEW_MAP} ${OUTPUT_MAP}
+	
+	if [ "${CONF_CHANGED}" != "0" ] || [ "${MAP_CHANGED}" != "0" ]
+	then
+		echo "Configuration updated."
+		notify_containers
+	else
+		echo "Configuration unchanged."
+	fi
 }
 
 trap cleanup SIGINT SIGTERM
@@ -137,6 +182,8 @@ trap cleanup SIGINT SIGTERM
 while [ 1 ]
 do
 	get_service_data DATA
+	
+	update_dns
 	
 	if [ "${GENERATOR}" == "haproxy" ]
 	then

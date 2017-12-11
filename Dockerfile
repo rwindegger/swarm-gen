@@ -8,6 +8,7 @@ COPY generate-vhosts /usr/bin/generate-vhosts
 COPY nginx.conf.mustache /etc/swarm-gen/nginx.conf.mustache
 COPY haproxy.cfg.mustache /etc/swarm-gen/haproxy.cfg.mustache
 COPY host.map.mustache /etc/swarm-gen/host.map.mustache
+COPY updatepdns.sql.mustache /etc/swarm-gen/updatedns.sql.mustache
 COPY invalid.http /etc/swarm-gen/invalid.http
 
 RUN chmod +x /usr/bin/generate-vhosts && mkdir -p /etc/nginx/conf.d && mkdir -p /usr/local/etc/haproxy
