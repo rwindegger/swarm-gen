@@ -61,7 +61,7 @@ function generate_new_file {
 			local HOST_NAMES=$(echo "${HOSTS}" | jq ".[] | \"${SERVICE_NAME}.\" + (.slot | tostring) + \".\" + .id" | tr -d '"')
 
 			echo "upstream ${SERVICE_NAME} {" >> ${TEMP_FILE}
-			echo "	ip_hash;" >> ${TEMP_FILE}
+			echo "	hash \$remote_addr consistent;" >> ${TEMP_FILE}
 			
 			for HOST_NAME in ${HOST_NAMES}
 			do
