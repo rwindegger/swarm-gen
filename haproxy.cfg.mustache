@@ -2,10 +2,12 @@
 
 global
 	maxconn 256
+	tune.ssl.default-dh-param 2048
 
 defaults
 	mode http
 	log global
+	option http-server-close
 	option abortonclose
 	option dontlognull
 	option httpclose
