@@ -2,8 +2,6 @@
 
 global
 	maxconn 256
-	user haproxy
-	group haproxy
 
 defaults
 	mode http
@@ -31,8 +29,8 @@ backend {{name}}
 	balance roundrobin
 	cookie {{name}}_stick insert indirect nocache
 	http-request set-header X-Forwarded-Port %[dst_port]
-    http-request add-header X-Forwarded-Proto https if { ssl_fc }
-    option httpchk HEAD / HTTP/1.1\r\nHost:{{host}}
+	http-request add-header X-Forwarded-Proto https if { ssl_fc }
+	option httpchk HEAD / HTTP/1.1\r\nHost:{{host}}
 	{{#tasks}}
 	server {{id}} {{hostname}}:{{port}} maxconn 15 check inter 10000 cookie {{id}}
 	{{/tasks}}
