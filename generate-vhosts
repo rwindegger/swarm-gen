@@ -78,13 +78,13 @@ function generate_new_file {
 			echo "  error_log /proc/self/fd/2;" >> ${TEMP_FILE}
 			echo "  access_log /proc/self/fd/1;" >> ${TEMP_FILE}
 			echo "  location / {" >> ${TEMP_FILE}
-			echo "          proxy_pass http://${SERVICE_NAME};" >> ${TEMP_FILE}
-			echo "			proxy_set_header Host $http_host;" >> ${TEMP_FILE}
-			echo "			proxy_set_header X-Real-IP $remote_addr;" >> ${TEMP_FILE}
-			echo "			proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;" >> ${TEMP_FILE}
-			echo "			proxy_set_header X-Forwarded-Proto $scheme;" >> ${TEMP_FILE}
-			echo "			proxy_http_version 1.1;" >> ${TEMP_FILE}
-			echo "			proxy_set_header Connection \"\";"
+			echo "		proxy_pass http://${SERVICE_NAME};" >> ${TEMP_FILE}
+			echo "		proxy_set_header Host \$http_host;" >> ${TEMP_FILE}
+			echo "		proxy_set_header X-Real-IP \$remote_addr;" >> ${TEMP_FILE}
+			echo "		proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;" >> ${TEMP_FILE}
+			echo "		proxy_set_header X-Forwarded-Proto \$scheme;" >> ${TEMP_FILE}
+			echo "		proxy_http_version 1.1;" >> ${TEMP_FILE}
+			echo "		proxy_set_header Connection \"\";" >> ${TEMP_FILE}
 			echo "  }" >> ${TEMP_FILE}
 
 			echo "}" >> ${TEMP_FILE}
