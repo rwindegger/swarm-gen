@@ -112,6 +112,27 @@ function cleanup {
 	exit 0
 }
 
+function handle_nginx {
+	local TEMPLATE=/etc/swarm-gen/nginx.conf.mustache
+	local OUTPUT_FILE=/etc/nginx/conf.d/hosts.conf
+	generate_new_file NEW_FILE ${OUTPUT_FILE} ${TEMPLATE} "${DATA}"
+	handle_file_change ${NEW_FILE} ${OUTPUT_FILE}
+}
+
+function handle_haproxy {
+	local TEMPLATE_CONF=/etc/swarm-gen/haproxy.cfg.mustache
+	local TEMPLATE_MAP=/etc/swarm-gen/host.map.mustache
+	local OUTPUT_CONF=/usr/local/etc/haproxy/haproxy.cfg
+	local OUTPUT_MAP=/usr/local/etc/haproxy/host.map
+	generate_new_file NEW_CONF ${OUTPUT_CONF} ${TEMPLATE_CONF} "${DATA}"
+	generate_new_file NEW_MAP ${OUTPUT_MAP} ${TEMPLATE_MAP} "${DATA}"
+	
+	cp /etc/swarm-gen/invalid.http /usr/local/etc/haproxy/invalid.http
+	
+	handle_file_change ${NEW_CONF} ${OUTPUT_CONF}
+	handle_file_change ${NEW_MAP} ${OUTPUT_MAP}
+}
+
 trap cleanup SIGINT SIGTERM
 
 while [ 1 ]
@@ -120,22 +141,9 @@ do
 	
 	if [ "${GENERATOR}" == "haproxy" ]
 	then
-		local TEMPLATE_CONF=/etc/swarm-gen/haproxy.cfg.mustache
-		local TEMPLATE_MAP=/etc/swarm-gen/host.map.mustache
-		local OUTPUT_CONF=/usr/local/etc/haproxy/haproxy.cfg
-		local OUTPUT_MAP=/usr/local/etc/haproxy/host.map
-		generate_new_file NEW_CONF ${OUTPUT_CONF} ${TEMPLATE_CONF} "${DATA}"
-		generate_new_file NEW_MAP ${OUTPUT_MAP} ${TEMPLATE_MAP} "${DATA}"
-		
-		cp /etc/swarm-gen/invalid.http /usr/local/etc/haproxy/invalid.http
-		
-		handle_file_change ${NEW_CONF} ${OUTPUT_CONF}
-		handle_file_change ${NEW_MAP} ${OUTPUT_MAP}
+		handle_haproxy
 	else
-		local TEMPLATE=/etc/swarm-gen/nginx.conf.mustache
-		local OUTPUT_FILE=/etc/nginx/conf.d/hosts.conf
-		generate_new_file NEW_FILE ${OUTPUT_FILE} ${TEMPLATE} "${DATA}"
-		handle_file_change ${NEW_FILE} ${OUTPUT_FILE}	
+		handle_nginx
 	fi
 	
 	sleep 5
