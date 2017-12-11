@@ -61,10 +61,11 @@ function generate_new_file {
 			local HOST_NAMES=$(echo "${HOSTS}" | jq ".[] | \"${SERVICE_NAME}.\" + (.slot | tostring) + \".\" + .id" | tr -d '"')
 
 			echo "upstream ${SERVICE_NAME} {" >> ${TEMP_FILE}
-
+			echo "	ip_hash;" >> ${TEMP_FILE}
+			
 			for HOST_NAME in ${HOST_NAMES}
 			do
-					echo "  server ${HOST_NAME}:${PORT};" >> ${TEMP_FILE}
+					echo "	server ${HOST_NAME}:${PORT};" >> ${TEMP_FILE}
 			done
 
 			echo "}" >> ${TEMP_FILE}
@@ -72,12 +73,12 @@ function generate_new_file {
 			echo "server {" >> ${TEMP_FILE}
 			echo "	gzip_types text/plain text/css application/json application/x-javascript text/xml application/xml application/xml+rss text/javascript;" >> ${TEMP_FILE}
 
-			echo "  server_name ${VHOST};" >> ${TEMP_FILE}
+			echo "	server_name ${VHOST};" >> ${TEMP_FILE}
 			echo "	proxy_buffering off;" >> ${TEMP_FILE}
-			echo "  listen 80;" >> ${TEMP_FILE}
-			echo "  error_log /proc/self/fd/2;" >> ${TEMP_FILE}
-			echo "  access_log /proc/self/fd/1;" >> ${TEMP_FILE}
-			echo "  location / {" >> ${TEMP_FILE}
+			echo "	listen 80;" >> ${TEMP_FILE}
+			echo "	error_log /proc/self/fd/2;" >> ${TEMP_FILE}
+			echo "	access_log /proc/self/fd/1;" >> ${TEMP_FILE}
+			echo "	location / {" >> ${TEMP_FILE}
 			echo "		proxy_pass http://${SERVICE_NAME};" >> ${TEMP_FILE}
 			echo "		proxy_set_header Host \$http_host;" >> ${TEMP_FILE}
 			echo "		proxy_set_header X-Real-IP \$remote_addr;" >> ${TEMP_FILE}
@@ -85,7 +86,7 @@ function generate_new_file {
 			echo "		proxy_set_header X-Forwarded-Proto \$scheme;" >> ${TEMP_FILE}
 			echo "		proxy_http_version 1.1;" >> ${TEMP_FILE}
 			echo "		proxy_set_header Connection \"\";" >> ${TEMP_FILE}
-			echo "  }" >> ${TEMP_FILE}
+			echo "	}" >> ${TEMP_FILE}
 
 			echo "}" >> ${TEMP_FILE}
 	done
