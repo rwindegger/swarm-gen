@@ -111,7 +111,10 @@ function update_dns {
 		
 		if [ "${CHANGED}" != "0" ]
 		then
+			echo "Updateing PowerDNS"
 			mysql --host="${MYSQL_HOST}" --user="${MYSQL_USER}" --password="${MYSQL_PASS}" --database="${MYSQL_DB}" < ${OUTPUT}
+		else
+			echo "Skiping PowerDNS update"
 		fi
 	fi
 }
