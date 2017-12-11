@@ -94,6 +94,9 @@ function get_service_data {
 function handle_file_change {
 	local FILE1="${1?missing file1}"
 	local FILE2="${2?missing file2}"
+	
+	touch ${FILE1}
+	touch ${FILE2}
 		
 	local CHANGED_LINES=$(comm -3 "${FILE1}" "${FILE2}" | wc -l)
 		
