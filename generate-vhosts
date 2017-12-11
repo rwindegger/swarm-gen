@@ -1,7 +1,6 @@
 #!/bin/bash
-LABEL_PREFIX=${1:-com.example.nginx}
-TEMPLATE=${2:-/etc/swarm-gen/nginx.conf.mustache}
-OUTPUT_FILE=${3:-/etc/nginx/conf.d/dynamic.conf}
+LABEL_PREFIX=${1:-com.example}
+GENERATOR=${2:-haproxy}
 
 if [ ! -e "${OUTPUT_FILE}" ]
 then
@@ -10,13 +9,13 @@ fi
 
 DOCKER_SOCK=/var/run/docker.sock
 
-HOST_LABEL=${LABEL_PREFIX}.host
-PORT_LABEL=${LABEL_PREFIX}.backend.port
-UPDT_LABEL=${LABEL_PREFIX}.frontend
+HOST_LABEL=${LABEL_PREFIX}.${GENERATOR}.host
+PORT_LABEL=${LABEL_PREFIX}.${GENERATOR}.backend.port
+UPDT_LABEL=${LABEL_PREFIX}.${GENERATOR}.frontend
 
 function swarm_force_service_reload {
 	local id="${1?missing id}"
-	local service=$(curl -s -g --unix-socket ${DOCKER_SOCK} http://docker/services/${id})
+	get_service service ${id}
 	local version=$(echo ${service} | jq .Version.Index)
 	local spec=$(echo ${service} | jq .Spec | jq '.TaskTemplate.ForceUpdate = 1')
 	echo ${spec} | curl -s -H "Content-Type: application/json" -X POST -g -d @- --unix-socket ${DOCKER_SOCK} http://docker/services/${id}/update?version=${version} | jq .
@@ -118,10 +117,26 @@ trap cleanup SIGINT SIGTERM
 while [ 1 ]
 do
 	get_service_data DATA
+	
+	if [ "${GENERATOR}" == "haproxy" ]
+	then
+		local TEMPLATE_CONF=/etc/swarm-gen/haproxy.cfg.mustache
+		local TEMPLATE_MAP=/etc/swarm-gen/host.map.mustache
+		local OUTPUT_CONF=/usr/local/etc/haproxy/haproxy.cfg
+		local OUTPUT_MAP=/usr/local/etc/haproxy/host.map
+		generate_new_file NEW_CONF ${OUTPUT_CONF} ${TEMPLATE_CONF} "${DATA}"
+		generate_new_file NEW_MAP ${OUTPUT_MAP} ${TEMPLATE_MAP} "${DATA}"
 		
-	generate_new_file NEW_FILE ${OUTPUT_FILE} ${TEMPLATE} "${DATA}"
-
-	handle_file_change ${NEW_FILE} ${OUTPUT_FILE}
+		cp /etc/swarm-gen/invalid.http /usr/local/etc/haproxy/invalid.http
+		
+		handle_file_change ${NEW_CONF} ${OUTPUT_CONF}
+		handle_file_change ${NEW_MAP} ${OUTPUT_MAP}
+	else
+		local TEMPLATE=/etc/swarm-gen/nginx.conf.mustache
+		local OUTPUT_FILE=/etc/nginx/conf.d/hosts.conf
+		generate_new_file NEW_FILE ${OUTPUT_FILE} ${TEMPLATE} "${DATA}"
+		handle_file_change ${NEW_FILE} ${OUTPUT_FILE}	
+	fi
 	
 	sleep 5
 done
