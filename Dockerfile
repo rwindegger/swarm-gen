@@ -2,7 +2,7 @@ FROM alpine:latest
 
 MAINTAINER rene@windegger.wtf
 
-RUN apk --update --no-cache mariadb-client add ruby jq curl bash && rm -rf /var/cache/apk/* && gem install mustache --no-document
+RUN apk --update --no-cache add mariadb-client ruby jq curl bash && rm -rf /var/cache/apk/* && gem install mustache --no-document
 
 COPY generate-vhosts /usr/bin/generate-vhosts
 COPY nginx.conf.mustache /etc/swarm-gen/nginx.conf.mustache
