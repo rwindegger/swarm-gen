@@ -100,8 +100,8 @@ function get_service_data {
 }
 
 function update_dns {
-#	if [ "${MYSQL_HOST}" != "disabled" ]
-#	then
+	if [ "${MYSQL_HOST}" != "disabled" ]
+	then
 		local TEMPLATE=/etc/swarm-gen/updatepdns.sql.mustache
 		local OUTPUT=/etc/swarm-gen/updatepdns.sql
 		
@@ -111,9 +111,9 @@ function update_dns {
 		
 		if [ "${CHANGED}" != "0" ]
 		then
-			echo "Send query."
+			mysql --host="${MYSQL_HOST}" --user="${MYSQL_USER}" --password="${MYSQL_PASS}" --database="${MYSQL_DB}" < ${OUTPUT}
 		fi
-#	fi
+	fi
 }
 
 function handle_file_change {
