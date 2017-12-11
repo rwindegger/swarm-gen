@@ -2,7 +2,7 @@ FROM alpine:latest
 
 MAINTAINER rene@windegger.wtf
 
-RUN apk --update --no-cache add ruby jq curl bash && rm -rf /var/cache/apk/* && gem --no-document install mustache
+RUN apk --update --no-cache add ruby jq curl bash && rm -rf /var/cache/apk/* && gem install mustache --no-document
 
 COPY generate-vhosts /usr/bin/generate-vhosts
 COPY nginx.conf.mustache /etc/swarm-gen/nginx.conf.mustache
