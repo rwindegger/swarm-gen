@@ -193,14 +193,13 @@ function update_certificates {
 	local OUTPUT=/etc/swarm-gen/domainlist
 
 	generate_new_file NEW_FILE ${OUTPUT} ${TEMPLATE} "${DATA}"
-	echo ${DATA} | jq ".services[].host" | tr -d '"'
 	
 	handle_file_change CHANGED ${NEW_FILE} ${OUTPUT}
 	
 	if [ "${CHANGED}" != "0" ]
 	then	
 		echo "Generating a new certificate"
-		cat ${OUTPUT} | parallel --dry-run --semaphore --fg --jobs 1 -X certbot certonly --dry-run  --agree-tos --standalone --http-01-port 80 --preferred-challenges http --noninteractive --email "${HOSTMASTER}" --domain {}
+		cat ${OUTPUT} | parallel --dry-run --jobs 1 -X certbot certonly --dry-run --noninteractive --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email "${HOSTMASTER}" {}
 	fi
 }
 
