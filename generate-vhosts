@@ -6,6 +6,9 @@ MYSQL_HOST=${MYSQL_HOST:-disabled}
 
 HOSTMASTER=${HOSTMASTER?hostmaster missing}
 
+CERTSTORE=/usr/local/etc/haproxy/certificates
+mkdir -p ${CERTSTORE}
+
 if [ "${MYSQL_HOST}" != "disabled" ]
 then
 	MYSQL_USER=${MYSQL_USER?user missing}
@@ -98,8 +101,8 @@ function get_service_data {
 	done
 	
 	local CERTHOST=$(hostname)
-	
-	local SERVICE_RESULT=$(echo ${SERVICE_RESULT} | jq "{services:., certhost:\"${CERTHOST}\", recordtag:\"${ROOT_LABEL}\"}")
+	local ENABLE_SSL=$(ls ${CERTSTORE} | wc -l)
+	local SERVICE_RESULT=$(echo ${SERVICE_RESULT} | jq "{services:., enableSSL:${ENABLE_SSL}, certhost:\"${CERTHOST}\", recordtag:\"${ROOT_LABEL}\"}")
 	eval $result="'${SERVICE_RESULT}'"
 }
 
@@ -203,9 +206,8 @@ function update_certificates {
 		
 		if [ "${GENERATOR}" == "haproxy" ]
 		then
-			local CERTSTORE=/usr/local/etc/haproxy/certificates
 			rm -rf ${CERTSTORE}/*
-			mkdir -p ${CERTSTORE}
+			
 			cd /etc/letsencrypt/live
 			for f in */fullchain.pem
 			do
@@ -214,7 +216,6 @@ function update_certificates {
 				cat ${folder}/fullchain.pem ${folder}/privkey.pem > ${newpath}
 			done
 			cd -
-			notify_containers
 		fi
 	fi
 }
