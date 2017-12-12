@@ -199,7 +199,7 @@ function update_certificates {
 	if [ "${CHANGED}" != "0" ]
 	then	
 		echo "Generating a new certificate"
-		cat ${OUTPUT} | parallel --dry-run --jobs 1 -X certbot certonly --dry-run --noninteractive --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email "${HOSTMASTER}" {}
+		cat ${OUTPUT} | parallel --dry-run --jobs 1 -X certbot certonly --dry-run --noninteractive --agree-tos --standalone --http-01-port=80 --preferred-challenges=http --email="${HOSTMASTER}" --domain={}
 	fi
 }
 
