@@ -206,7 +206,7 @@ function update_certificates {
 			local CERTSTORE=/usr/local/etc/haproxy/certificates
 			rm -rf ${CERTSTORE}/*
 			mkdir -p ${CERTSTORE}
-			cd /etc/letsencrpyt/live
+			cd /etc/letsencrypt/live
 			for f in */fullchain.pem
 			do
 				folder="${f%/*}"
