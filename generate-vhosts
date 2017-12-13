@@ -49,7 +49,7 @@ function notify_containers {
 		swarm_force_service_reload ${SERVICE}
 	done
 	
-	sleep 60 # Waiting for service update...
+	sleep 30 # Waiting for service update...
 }
 
 function get_filtered_data {
@@ -225,8 +225,7 @@ function update_certificates {
 				local entry=(${entries})
 				local DOMAINS=$(for k in "${entry[@]}"; do echo "-d ${k}"; done)
 				local DOMAINS=$(join_by " " ${DOMAINS})
-				echo "certbot certonly --noninteractive --dry-run --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" ${DOMAINS}"
-				certbot certonly --noninteractive --dry-run --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" ${DOMAINS}
+				certbot certonly --noninteractive --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" ${DOMAINS}
 			done
 			
 			rm -rf ${CERTSTORE}/*
