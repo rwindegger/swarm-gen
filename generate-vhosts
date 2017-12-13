@@ -110,7 +110,13 @@ function get_service_data {
 	done
 	
 	local CERTHOST=$(hostname)
-	local ENABLE_SSL=$(ls ${CERTSTORE} | wc -l)
+	
+	if [ "$(ls ${CERTSTORE} | wc -l)" == 0 ]
+	then
+		local ENABLE_SSL=false
+	else
+		local ENABLE_SSL=true
+	fi
 	local SERVICE_RESULT=$(echo ${SERVICE_RESULT} | jq "{services:., enableSSL:${ENABLE_SSL}, certhost:\"${CERTHOST}\", recordtag:\"${ROOT_LABEL}\"}")
 	eval $result="'${SERVICE_RESULT}'"
 }
@@ -219,6 +225,7 @@ function update_certificates {
 				local entry=(${entries})
 				local DOMAINS=$(for k in "${entry[@]}"; do echo "-d ${k}"; done)
 				local DOMAINS=$(join_by " " ${DOMAINS})
+				echo "certbot certonly --noninteractive --dry-run --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" ${DOMAINS}"
 				certbot certonly --noninteractive --dry-run --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" ${DOMAINS}
 			done
 			
