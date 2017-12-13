@@ -2,5 +2,8 @@
 {{#services}}
 	{{#isActive}}
 {{host}} {{name}}
+		{{#alius}}
+{{.}} {{name}}
+		{{/alius}}
 	{{/isActive}}
 {{/services}}

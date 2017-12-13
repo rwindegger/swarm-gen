@@ -1,13 +1,8 @@
 #!/bin/bash
 LABEL_PREFIX=${1:-com.example}
 GENERATOR=${2:-haproxy}
-
 MYSQL_HOST=${MYSQL_HOST:-disabled}
-
-HOSTMASTER=${HOSTMASTER?hostmaster missing}
-
-CERTSTORE=/usr/local/etc/haproxy/certificates
-mkdir -p ${CERTSTORE}
+HOSTMASTER=${HOSTMASTER:-disabled}
 
 if [ "${MYSQL_HOST}" != "disabled" ]
 then
@@ -19,11 +14,23 @@ fi
 DOCKER_SOCK=/var/run/docker.sock
 
 ROOT_LABEL=${LABEL_PREFIX}.${GENERATOR}
-ENDP_LABEL=${ROOT_LABEL}.host.endpoint
-DOMN_LABEL=${ROOT_LABEL}.host.domain
+
+FRNT_LABEL=${ROOT_LABEL}.frontend
+
+BKNT_LABEL=${ROOT_LABEL}.backend
+PORT_LABEL=${BKNT_LABEL}.port
+
 HOST_LABEL=${ROOT_LABEL}.host
-PORT_LABEL=${ROOT_LABEL}.backend.port
-UPDT_LABEL=${ROOT_LABEL}.frontend
+ENDP_LABEL=${HOST_LABEL}.endpoint
+DOMN_LABEL=${HOST_LABEL}.domain
+OTHR_LABEL=${HOST_LABEL}.hosts
+
+if [ "${GENERATOR}" == "haproxy" ]
+then
+	CERTSTORE=/usr/local/etc/haproxy/certificates
+else
+	CERTSTORE=/etc/nginx/certificates
+fi
 
 function swarm_force_service_reload {
 	local id="${1?missing id}"
@@ -34,13 +41,15 @@ function swarm_force_service_reload {
 }
 
 function notify_containers {
-	local SERVICES=$(curl -s -g --unix-socket ${DOCKER_SOCK} http://docker/services?filters={%22label%22:[%22${UPDT_LABEL}%22]} | jq .[].Spec.Name)
+	local SERVICES=$(curl -s -g --unix-socket ${DOCKER_SOCK} http://docker/services?filters={%22label%22:[%22${FRNT_LABEL}%22]} | jq .[].Spec.Name)
 	
 	for SERVICE in ${SERVICES}
 	do
 		SERVICE=$(echo ${SERVICE} | tr -d '"')
 		swarm_force_service_reload ${SERVICE}
 	done
+	
+	sleep 60 # Waiting for service update...
 }
 
 function get_filtered_data {
@@ -90,7 +99,7 @@ function get_service_data {
 			local SERVICE_NAME=$(echo ${SERVICE_NAME} | tr -d '"')
 			get_service SERVICE_DATA ${SERVICE_NAME}
 
-			local SERVICE=$(echo ${SERVICE_DATA} | jq "{ name:.Spec.Name, domain:.Spec.Labels[\"${DOMN_LABEL}\"], endpoint:.Spec.Labels[\"${ENDP_LABEL}\"], host:.Spec.Labels[\"${HOST_LABEL}\"], port:.Spec.Labels[\"${PORT_LABEL}\"], data:. }")
+			local SERVICE=$(echo ${SERVICE_DATA} | jq "{ name:.Spec.Name, domain:.Spec.Labels[\"${DOMN_LABEL}\"], alius: [ .Spec.Labels | to_entries[] | select( (.key | startswith(\"${OTHR_LABEL}\")) ) | .value ], endpoint:.Spec.Labels[\"${ENDP_LABEL}\"], host:.Spec.Labels[\"${HOST_LABEL}\"], port:.Spec.Labels[\"${PORT_LABEL}\"], data:. }")
 
 			get_filtered_data HOSTS "tasks" "{%22service%22:[%22${SERVICE_NAME}%22]}"
 			local HOSTS=$(echo ${HOSTS} | jq "{ tasks:[ .[] | select(.Status.State == \"running\") | { id:.ID, hostname:\"${SERVICE_NAME}.\(.Slot | tostring).\(.ID)\", data:. } ] }")
@@ -147,10 +156,6 @@ function handle_file_change {
 	fi
 }
 
-function cleanup {
-	exit 0
-}
-
 function handle_nginx {
 	local TEMPLATE=/etc/swarm-gen/nginx.conf.mustache
 	local OUTPUT_FILE=/etc/nginx/conf.d/hosts.conf
@@ -191,39 +196,62 @@ function handle_haproxy {
 	fi
 }
 
-function update_certificates {
-	local TEMPLATE=/etc/swarm-gen/domainlist.mustache
-	local OUTPUT=/etc/swarm-gen/domainlist
+function join_by { local IFS="$1"; shift; echo "$*"; }
 
-	generate_new_file NEW_FILE ${OUTPUT} ${TEMPLATE} "${DATA}"
-	
-	handle_file_change CHANGED ${NEW_FILE} ${OUTPUT}
-	
-	if [ "${CHANGED}" != "0" ]
-	then	
-		echo "Generating a new certificate"
-		cat ${OUTPUT} | parallel --jobs 1 -X certbot certonly --noninteractive --agree-tos --standalone --http-01-port=80 --preferred-challenges=http --email="${HOSTMASTER}" --domain={}
+function update_certificates {
+	if [ "${HOSTMASTER}" != "disabled" ]
+	then
+		local TEMPLATE=/etc/swarm-gen/domainlist.mustache
+		local OUTPUT=/etc/swarm-gen/domainlist
+
+		generate_new_file NEW_FILE "${OUTPUT}" "${TEMPLATE}" "${DATA}"
 		
-		if [ "${GENERATOR}" == "haproxy" ]
-		then
+		handle_file_change CHANGED "${NEW_FILE}" "${OUTPUT}"
+		
+		if [ "${CHANGED}" != "0" ]
+		then	
+			echo "Generating certificates"
+			
+			mapfile -t requests <<< $(cat ${OUTPUT})
+			
+			for entries in "${requests[@]}"
+			do
+				local entry=(${entries})
+				local DOMAINS=$(for k in "${entry[@]}"; do echo "-d ${k}"; done)
+				local DOMAINS=$(join_by " " ${DOMAINS})
+				certbot certonly --noninteractive --dry-run --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" ${DOMAINS}
+			done
+			
 			rm -rf ${CERTSTORE}/*
 			
-			cd /etc/letsencrypt/live
-			for f in */fullchain.pem
-			do
-				folder="${f%/*}"
-				newpath="${CERTSTORE}/${folder}.pem"
-				cat ${folder}/fullchain.pem ${folder}/privkey.pem > ${newpath}
-			done
-			cd -
+			if [ -d /etc/letsencrypt/live ]
+				then
+				
+				for entries in "${requests[@]}"
+				do
+					local entry=(${entries})
+					local folder="/etc/letsencrypt/live/${entry[0]}"
+					if [ -d "${folder}" ]
+					then
+						local newpath="${CERTSTORE}/${entry[0]}"
+						cat ${folder}/fullchain.pem ${folder}/privkey.pem > ${newpath}
+					fi
+				done
+			else
+				rm ${OUTPUT}
+			fi
 		fi
 	fi
 }
+
+function cleanup { exit 0; }
 
 trap cleanup SIGINT SIGTERM
 
 while [ 1 ]
 do
+	mkdir -p ${CERTSTORE}
+
 	get_service_data DATA
 	
 	update_dns
@@ -231,10 +259,11 @@ do
 	if [ "${GENERATOR}" == "haproxy" ]
 	then
 		handle_haproxy
-		update_certificates
 	else
 		handle_nginx
 	fi
 	
-	sleep 5
+	update_certificates
+	
+	sleep 30
 done

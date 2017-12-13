@@ -7,6 +7,9 @@ DELETE FROM `records` where `type` = 'CNAME' and `ordername` = '{{recordtag}}';
 {{#services}}
 	{{#isActive}}
 INSERT INTO `records` VALUES (NULL, '{{domain}}', '{{host}}', 'CNAME', '{{endpoint}}', '86400', '0', UNIX_TIMESTAMP(), '0', '{{recordtag}}', '1');
+		{{#alius}}
+INSERT INTO `records` VALUES (NULL, '{{domain}}', '{{.}}', 'CNAME', '{{host}}', '86400', '0', UNIX_TIMESTAMP(), '0', '{{recordtag}}', '1');
+		{{/alius}}
 	{{/isActive}}
 {{/services}}
 
