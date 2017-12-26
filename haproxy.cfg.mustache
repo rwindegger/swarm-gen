@@ -21,10 +21,10 @@ frontend http-in
 	stats enable
 	stats hide-version
 	stats uri /.well-known/haproxy
-{{#enableSSL}}
-	redirect scheme https code 301 if !{ ssl_fc }
-{{/enableSSL}}
 	acl is_certbot path_beg /.well-known/acme-challenge
+{{#enableSSL}}
+	redirect scheme https code 301 if !{ ssl_fc } AND !is_certbot
+{{/enableSSL}}
 	use_backend certbot if is_certbot
 	use_backend %[req.hdr(host),lower,map(/usr/local/etc/haproxy/host.map,default)] if !is_certbot
 
