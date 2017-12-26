@@ -21,9 +21,7 @@ BKNT_LABEL=${ROOT_LABEL}.backend
 PORT_LABEL=${BKNT_LABEL}.port
 
 HOST_LABEL=${ROOT_LABEL}.host
-ENDP_LABEL=${HOST_LABEL}.endpoint
-DOMN_LABEL=${HOST_LABEL}.domain
-OTHR_LABEL=${HOST_LABEL}.hosts
+SLCT_LABEL=${HOST_LABEL}.primary
 
 if [ "${GENERATOR}" == "haproxy" ]
 then
@@ -88,7 +86,7 @@ function generate_new_file {
 
 function get_service_data {
 	local result=$1
-	get_filtered_data SERVICES "services" "{%22label%22:[%22${HOST_LABEL}%22]}"
+	get_filtered_data SERVICES "services" "{%22label%22:[%22${SLCT_LABEL}%22]}"
 	
 	local SERVICE_NAMES=$(echo $SERVICES | jq .[].Spec.Name | tr -d '"')
 	
@@ -99,7 +97,31 @@ function get_service_data {
 			local SERVICE_NAME=$(echo ${SERVICE_NAME} | tr -d '"')
 			get_service SERVICE_DATA ${SERVICE_NAME}
 
-			local SERVICE=$(echo ${SERVICE_DATA} | jq "{ name:.Spec.Name, domain:.Spec.Labels[\"${DOMN_LABEL}\"], alius: [ .Spec.Labels | to_entries[] | select( (.key | startswith(\"${OTHR_LABEL}\")) ) | .value ], endpoint:.Spec.Labels[\"${ENDP_LABEL}\"], host:.Spec.Labels[\"${HOST_LABEL}\"], port:.Spec.Labels[\"${PORT_LABEL}\"], data:. }")
+			local SERVICE=$(echo ${SERVICE_DATA} | jq "
+def process(f):
+	if (f | type == \"array\") then 
+		[ 
+			f | 
+			group_by(.key[0])[] | 
+			if (try (.[0].key[0] | tonumber) catch -1) == -1 then
+				if (. | length == 1) then 
+					{ key: .[0].key[0], value: .[0].value }
+				else
+					{ key: .[0].key[0], value: process( [ .[] | { key: .key[1:], value: .value } ] ) | ( if ( try from_entries catch -1 ) == -1 then . else from_entries end ) }
+				end
+			else
+				process( [ .[] | { key: .key[1:], value: .value } ] ) | ( try from_entries catch . )
+			end
+		]
+	else 
+		.
+	end;
+
+			{ 
+				name:.Spec.Name,
+				labels: [ .Spec.Labels | to_entries[] | select( .key | startswith(\"${LABEL_PREFIX}.\") ) | .key |= ( . | ltrimstr(\"${LABEL_PREFIX}.\") | split(\".\") ) ] | process(.) | from_entries,
+				data:. 
+			}")
 
 			get_filtered_data HOSTS "tasks" "{%22service%22:[%22${SERVICE_NAME}%22]}"
 			local HOSTS=$(echo ${HOSTS} | jq "{ tasks:[ .[] | select(.Status.State == \"running\") | { id:.ID, hostname:\"${SERVICE_NAME}.\(.Slot | tostring).\(.ID)\", data:. } ] }")
@@ -128,9 +150,9 @@ function update_dns {
 		local OUTPUT=/etc/swarm-gen/updatepdns.sql
 		
 		generate_new_file NEW_CONF ${OUTPUT} ${TEMPLATE} "${DATA}"
-		
+
 		handle_file_change CHANGED ${NEW_CONF} ${OUTPUT}
-		
+
 		if [ "${CHANGED}" != "0" ]
 		then
 			echo "Updateing PowerDNS"
@@ -187,7 +209,7 @@ function handle_haproxy {
 	
 	generate_new_file NEW_CONF ${OUTPUT_CONF} ${TEMPLATE_CONF} "${DATA}"
 	generate_new_file NEW_MAP ${OUTPUT_MAP} ${TEMPLATE_MAP} "${DATA}"
-	
+		
 	cp /etc/swarm-gen/*.http /usr/local/etc/haproxy/
 	
 	handle_file_change CONF_CHANGED ${NEW_CONF} ${OUTPUT_CONF}
@@ -211,7 +233,7 @@ function update_certificates {
 		local OUTPUT=/etc/swarm-gen/domainlist
 
 		generate_new_file NEW_FILE "${OUTPUT}" "${TEMPLATE}" "${DATA}"
-		
+
 		handle_file_change CHANGED "${NEW_FILE}" "${OUTPUT}"
 		
 		if [ "${CHANGED}" != "0" ]
@@ -259,7 +281,7 @@ do
 	mkdir -p ${CERTSTORE}
 
 	get_service_data DATA
-	
+		
 	update_dns
 	
 	if [ "${GENERATOR}" == "haproxy" ]

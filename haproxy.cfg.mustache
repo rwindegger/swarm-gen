@@ -7,10 +7,8 @@ global
 defaults
 	mode http
 	log global
-	option http-server-close
 	option abortonclose
 	option dontlognull
-	option httpclose
 	option httplog
 	option forwardfor
 	option redispatch
@@ -37,18 +35,20 @@ backend certbot
 	server certbot {{certhost}}:80 maxconn 15
 	
 backend default
+	option forceclose
 	errorfile 503 /usr/local/etc/haproxy/invalid.http
 {{#services}}
 	{{#isActive}}
 	
 backend {{name}}
-	balance roundrobin
-	cookie {{name}}_stick insert indirect nocache
+	balance {{labels.haproxy.backend.balance}}
+	option {{labels.haproxy.backend.mode}}
+	cookie {{labels.haproxy.backend.cookie}}_stick insert indirect nocache
 	http-request set-header X-Forwarded-Port %[dst_port]
 	http-request add-header X-Forwarded-Proto https if { ssl_fc }
-	option httpchk HEAD / HTTP/1.1\r\nHost:{{host}}
+	option httpchk HEAD / HTTP/1.1\r\nHost:{{labels.haproxy.host.primary}}
 		{{#tasks}}
-	server {{id}} {{hostname}}:{{port}} maxconn 15 check inter 10000 cookie {{id}}
+	server {{id}} {{hostname}}:{{port}} maxconn {{labels.haproxy.backend.maxconn}} check inter 10000 cookie {{id}}
 		{{/tasks}}
 	{{/isActive}}
 {{/services}}
