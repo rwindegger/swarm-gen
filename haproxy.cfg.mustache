@@ -12,9 +12,9 @@ defaults
 	option httplog
 	option forwardfor
 	option redispatch
-	timeout connect 5000ms
-	timeout client 50000ms
-	timeout server 50000ms
+	timeout connect 60000ms
+	timeout client 60000ms
+	timeout server 180000ms
 
 frontend http-in
 	bind *:80
