@@ -247,7 +247,7 @@ function update_certificates {
 				local entry=(${entries})
 				local DOMAINS=$(for k in "${entry[@]}"; do echo "-d ${k}"; done)
 				local DOMAINS=$(join_by " " ${DOMAINS})
-				certbot certonly --noninteractive --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" ${DOMAINS}
+				certbot certonly --noninteractive --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" --expand ${DOMAINS}
 			done
 			
 			rm -rf ${CERTSTORE}/*
