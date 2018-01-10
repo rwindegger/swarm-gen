@@ -47,9 +47,9 @@ frontend https-in
 	use_backend certbot if is_certbot
 
 	acl speak_alpn_h2 ssl_fc_alpn -i h2
-	use_backend %[req.hdr(host),lower,map(/usr/local/etc/haproxy/http2.map,default)] if (!is_certbot && h2)
+	use_backend %[req.hdr(host),lower,map(/usr/local/etc/haproxy/http2.map,default)] if !is_certbot AND h2
 	
-	use_backend %[req.hdr(host),lower,map(/usr/local/etc/haproxy/http11.map,default)] if (!is_certbot && !h2)
+	use_backend %[req.hdr(host),lower,map(/usr/local/etc/haproxy/http11.map,default)] if !is_certbot AND !h2
 	
 	default_backend default
 	
