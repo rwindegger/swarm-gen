@@ -84,7 +84,7 @@ backend {{name}}-http2
 	tcp-request content accept if clienthello
 	tcp-response content accept if serverhello
 	stick on payload_lv(43,1) if clienthello
-	stick store-respose payload_lv(43,1) if serverhello
+	stick store-response payload_lv(43,1) if serverhello
 		{{#tasks}}
 	server {{name}}-http2-{{slot}} {{hostname}}:{{labels.haproxy.backend.port-http2}} maxconn {{labels.haproxy.backend.maxconn}} check{{#labels.haproxy.backend.proxy-pass-http2}} send-proxy{{/labels.haproxy.backend.proxy-pass-http2}}
 		{{/tasks}}
