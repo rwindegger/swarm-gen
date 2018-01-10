@@ -204,7 +204,7 @@ function handle_nginx {
 function handle_haproxy {
 	local TEMPLATE_CONF=/etc/swarm-gen/haproxy.cfg.mustache
 	local TEMPLATE_MAP=/etc/swarm-gen/http11.map.mustache
-	local TEMPLATE2_MAP=/etc/swarm-gen/http12.map.mustache
+	local TEMPLATE2_MAP=/etc/swarm-gen/http2.map.mustache
 	local OUTPUT_CONF=/usr/local/etc/haproxy/haproxy.cfg
 	local OUTPUT_MAP=/usr/local/etc/haproxy/http11.map
 	local OUTPUT2_MAP=/usr/local/etc/haproxy/http2.map
