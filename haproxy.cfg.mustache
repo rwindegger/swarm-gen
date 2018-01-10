@@ -64,7 +64,7 @@ backend {{name}}
 	http-request add-header X-Forwarded-Proto https if { ssl_fc }
 	option httpchk HEAD {{#labels.haproxy.host.check}}{{labels.haproxy.host.check}}{{/labels.haproxy.host.check}}{{^labels.haproxy.host.check}}/{{/labels.haproxy.host.check}} HTTP/1.1\r\nHost:{{labels.haproxy.host.primary}}
 		{{#tasks}}
-	server {{id}} {{hostname}}:{{labels.haproxy.backend.port}} maxconn {{labels.haproxy.backend.maxconn}} check inter 10000 cookie {{id}}
+	server {{id}} {{hostname}}:{{labels.haproxy.backend.port}} maxconn {{labels.haproxy.backend.maxconn}} check inter 10000 cookie {{id}}{{#labels.haproxy.backend.proxy-pass}} send-proxy{{/labels.haproxy.backend.proxy-pass}}
 		{{/tasks}}
 	{{/isActive}}
 {{/services}}
