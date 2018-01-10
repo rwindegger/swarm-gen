@@ -124,7 +124,7 @@ def process(f):
 			}")
 
 			get_filtered_data HOSTS "tasks" "{%22service%22:[%22${SERVICE_NAME}%22]}"
-			local HOSTS=$(echo ${HOSTS} | jq "{ tasks:[ .[] | select(.Status.State == \"running\") | { id:.ID, hostname:\"${SERVICE_NAME}.\(.Slot | tostring).\(.ID)\", data:. } ] }")
+			local HOSTS=$(echo ${HOSTS} | jq "{ tasks:[ .[] | select(.Status.State == \"running\") | { id:.ID, slot: .Slot, hostname:\"${SERVICE_NAME}.\(.Slot | tostring).\(.ID)\", data:. } ] }")
 			
 			local SERVICE=$(echo "[${SERVICE}, ${HOSTS}]" | jq add)
 			local SERVICE=$(echo "${SERVICE}" | jq ".isActive = ((.tasks | length) != 0)")
@@ -203,19 +203,23 @@ function handle_nginx {
 
 function handle_haproxy {
 	local TEMPLATE_CONF=/etc/swarm-gen/haproxy.cfg.mustache
-	local TEMPLATE_MAP=/etc/swarm-gen/host.map.mustache
+	local TEMPLATE_MAP=/etc/swarm-gen/http11.map.mustache
+	local TEMPLATE2_MAP=/etc/swarm-gen/http12.map.mustache
 	local OUTPUT_CONF=/usr/local/etc/haproxy/haproxy.cfg
-	local OUTPUT_MAP=/usr/local/etc/haproxy/host.map
+	local OUTPUT_MAP=/usr/local/etc/haproxy/http11.map
+	local OUTPUT2_MAP=/usr/local/etc/haproxy/http2.map
 	
 	generate_new_file NEW_CONF ${OUTPUT_CONF} ${TEMPLATE_CONF} "${DATA}"
 	generate_new_file NEW_MAP ${OUTPUT_MAP} ${TEMPLATE_MAP} "${DATA}"
+	generate_new_file NEW_MAP2 ${OUTPUT2_MAP} ${TEMPLATE2_MAP} "${DATA}"
 		
 	cp /etc/swarm-gen/*.http /usr/local/etc/haproxy/
 	
 	handle_file_change CONF_CHANGED ${NEW_CONF} ${OUTPUT_CONF}
 	handle_file_change MAP_CHANGED ${NEW_MAP} ${OUTPUT_MAP}
+	handle_file_change MAP2_CHANGED ${NEW_MAP2} ${OUTPUT2_MAP}
 	
-	if [ "${CONF_CHANGED}" != "0" ] || [ "${MAP_CHANGED}" != "0" ]
+	if [ "${CONF_CHANGED}" != "0" ] || [ "${MAP_CHANGED}" != "0" ] || [ "${MAP2_CHANGED}" != "0" ]
 	then
 		echo "Configuration updated."
 		notify_containers

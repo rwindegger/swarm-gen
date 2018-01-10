@@ -5,7 +5,7 @@
 			{{#haproxy}}
 				{{#host}}
 					{{#hosts}}
-{{domain.name}} {{name}}
+{{domain.name}} {{name}}-{{#labels.haproxy.backend.http2}}http2{{/labels.haproxy.backend.http2}}{{^labels.haproxy.backend.http2}}http11{{/labels.haproxy.backend.http2}}
 					{{/hosts}}
 				{{/host}}
 			{{/haproxy}}
