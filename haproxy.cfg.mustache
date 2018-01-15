@@ -67,12 +67,14 @@ backend default
 backend {{name}}-http11
 	balance {{labels.haproxy.backend.balance}}
 	option {{labels.haproxy.backend.mode}}
+{{#labels.haproxy.backend.cookie}}
 	cookie {{labels.haproxy.backend.cookie}}_stick insert indirect nocache
+{{/labels.haproxy.backend.cookie}}
 	http-request set-header X-Forwarded-Port %[dst_port]
 	http-request add-header X-Forwarded-Proto https if { ssl_fc }
 	option httpchk HEAD {{#labels.haproxy.host.check}}{{labels.haproxy.host.check}}{{/labels.haproxy.host.check}}{{^labels.haproxy.host.check}}/{{/labels.haproxy.host.check}} HTTP/1.1\r\nHost:{{labels.haproxy.host.primary}}
 		{{#tasks}}
-	server {{name}}-http11-{{slot}} {{hostname}}:{{labels.haproxy.backend.port}} maxconn {{labels.haproxy.backend.maxconn}} check cookie {{id}}{{#labels.haproxy.backend.proxy-pass}} send-proxy{{/labels.haproxy.backend.proxy-pass}}
+	server {{name}}-http11-{{slot}} {{hostname}}:{{labels.haproxy.backend.port}} maxconn {{labels.haproxy.backend.maxconn}} check{{#labels.haproxy.backend.cookie}} cookie {{id}}{{/labels.haproxy.backend.cookie}}{{#labels.haproxy.backend.proxy-pass}} send-proxy{{/labels.haproxy.backend.proxy-pass}}
 		{{/tasks}}
 {{#labels.haproxy.backend.http2}}
 
