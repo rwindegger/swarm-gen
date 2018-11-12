@@ -124,7 +124,7 @@ def process(f):
 			}")
 
 			get_filtered_data HOSTS "tasks" "{%22service%22:[%22${SERVICE_NAME}%22]}"
-			local HOSTS=$(echo ${HOSTS} | jq "{ tasks:[ .[] | select(.Status.State == \"running\") | { id:.ID, slot: .Slot, hostname:\"${SERVICE_NAME}.\(.Slot | tostring).\(.ID)\", data:. } ] }")
+			local HOSTS=$(echo ${HOSTS} | jq "{ tasks:[ .[] | select(.Status.State == \"running\" and .DesiredState == \"running\") | { id:.ID, slot: .Slot, hostname:\"${SERVICE_NAME}.\(.Slot | tostring).\(.ID)\", data:. } ] }")
 			
 			local SERVICE=$(echo "[${SERVICE}, ${HOSTS}]" | jq add)
 			local SERVICE=$(echo "${SERVICE}" | jq ".isActive = ((.tasks | length) != 0)")
