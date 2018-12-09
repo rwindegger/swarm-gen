@@ -4,18 +4,8 @@ START TRANSACTION READ WRITE;
 
 DELETE FROM `records` where `type` = 'CNAME' and `ordername` = '{{recordtag}}';
 
-{{#services}}
-	{{#isActive}}
-		{{#labels}}
-			{{#haproxy}}
-				{{#host}}
-					{{#hosts}}
-INSERT INTO `records` VALUES (NULL, '{{domain.id}}', '{{domain.name}}', 'CNAME', '{{domain.endpoint}}', '86400', '0', UNIX_TIMESTAMP(), '0', '{{recordtag}}', '1');
-					{{/hosts}}
-				{{/host}}
-			{{/haproxy}}
-		{{/labels}}
-	{{/isActive}}
-{{/services}}
+{{#hosts}}
+INSERT INTO `records` VALUES (NULL, '{{id}}', '{{domain}}', 'CNAME', '{{endpoint}}', '86400', '0', UNIX_TIMESTAMP(), '0', '{{recordtag}}', '1');
+{{/hosts}}
 
 COMMIT;

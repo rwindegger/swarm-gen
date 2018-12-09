@@ -1,6 +1,12 @@
 #!/bin/bash
-LABEL_PREFIX=${1:-com.example}
-GENERATOR=${2:-haproxy}
+PREFIX=${1:-com.example}
+CONSUL=${CONSUL:-error}
+if [ "${CONSUL}" == "error" ]
+then
+	echo "No consul server set." && exit 1
+fi
+
+GENERATOR=${GENERATOR:-disabled}
 MYSQL_HOST=${MYSQL_HOST:-disabled}
 HOSTMASTER=${HOSTMASTER:-disabled}
 
@@ -13,62 +19,109 @@ fi
 
 DOCKER_SOCK=/var/run/docker.sock
 
-ROOT_LABEL=${LABEL_PREFIX}.${GENERATOR}
+CONF_KEY=${PREFIX}.haproxy
+CERT_KEY=${CONF_KEY}.certificates
+FILE_KEY=${CONF_KEY}.files
+DOMAINS_KEY=${CONF_KEY}.domains
 
-FRNT_LABEL=${ROOT_LABEL}.frontend
+CONF_SRC=${CONSUL}/v1/kv/${CONF_KEY}/
+CERT_SRC=${CONSUL}/v1/kv/${CERT_KEY}/
+FILE_SRC=${CONSUL}/v1/kv/${FILE_KEY}/
+DOMAINS_SRC=${CONSUL}/v1/kv/${DOMAINS_KEY}/
 
-BKNT_LABEL=${ROOT_LABEL}.backend
-PORT_LABEL=${BKNT_LABEL}.port
+CONFSTORE=/usr/local/etc/haproxy
+CERTSTORE=${CONFSTORE}/certificates
+FILESTORE=${CONFSTORE}/files
 
-HOST_LABEL=${ROOT_LABEL}.host
-SLCT_LABEL=${HOST_LABEL}.primary
+TEMPSTORE=/etc/swarm-gen
 
-if [ "${GENERATOR}" == "haproxy" ]
-then
-	CERTSTORE=/usr/local/etc/haproxy/certificates
-else
-	CERTSTORE=/etc/nginx/certificates
-fi
+function cleanup { echo "SIGINT or SIGTERM hit." && exit 0; }
+
+trap cleanup SIGINT SIGTERM
+
+function join_by { local IFS="$1"; shift; echo "$*"; }
+
+function get_service {
+	local result=$1
+	
+	local id=${2?-error}
+	if [ "${id}" == "error" ]
+	then
+		echo "No id set." && exit 1
+	fi
+	
+	local content=$(curl -sg --unix-socket ${DOCKER_SOCK} http://docker/services/${id} | jq .)
+	
+	eval $result="'${content}'"
+}
+
+function get_filtered_services {
+	local result=$1
+	
+	local LABEL=${2:-error}
+	if [ "${LABEL}" == "error" ]
+	then
+		echo "No LABEL set." && exit 1
+	fi
+	
+	local data=$(curl -s -g --unix-socket ${DOCKER_SOCK} http://docker/services?filters={%22label%22:[%22${LABEL}%22]} | jq .[].Spec.Name)
+	
+	eval $result="'${data}'"
+}
+
+function get_containers {
+        local result=$1
+
+        local SERVICE=${2:-error}
+        if [ "$SERVICE" == "error" ]
+        then
+                echo "No SERVICE set." && exit 1
+        fi
+
+        local data=$(curl -s -g --unix-socket ${DOCKER_SOCK} http://docker/tasks?filters={%22service%22:[%22${SERVICE}%22]} | jq ".[] | select(.Status.State == \"running\") | .Status.ContainerStatus.ContainerID")
+
+        eval $result="'${data}'"
+}
+
+function signal_container {
+	local CONTAINER_ID=${1:-error}
+	if [ "${CONTAINER_ID}" == "error" ]
+	then
+		echo "No LABEL set." && exit 1
+	fi
+	local SIGNAL=${2:-error}
+	if [ "${SIGNAL}" == "error" ]
+	then
+		echo "No SIGNAL set." && exit 1
+	fi
+	
+	local output=$(curl -s -X POST --unix-socket ${DOCKER_SOCK} http://docker/containers/${CONTAINER_ID}/kill?signal=${SIGNAL})
+}
 
 function swarm_force_service_reload {
-	local id="${1?missing id}"
-	get_service service ${id}
-	local version=$(echo ${service} | jq .Version.Index)
-	local spec=$(echo ${service} | jq .Spec | jq '.TaskTemplate.ForceUpdate = 1')
-	echo ${spec} | curl -s -H "Content-Type: application/json" -X POST -g -d @- --unix-socket ${DOCKER_SOCK} http://docker/services/${id}/update?version=${version} | jq .
+	local id="${1?-error}"
+	if [ "${id}" == "error" ]
+	then
+		echo "No id set." && exit 1
+	fi
+	get_containers CONTAINERS ${id}
+	
+	for CONTAINER in ${CONTAINERS}
+	do
+		signal_container ${CONTAINER} "HUP"
+	done
 }
 
 function notify_containers {
-	local SERVICES=$(curl -s -g --unix-socket ${DOCKER_SOCK} http://docker/services?filters={%22label%22:[%22${FRNT_LABEL}%22]} | jq .[].Spec.Name)
+	local FRONTEND_LABEL=${CONF_KEY}.frontend
+	
+	get_filtered_services SERVICES "${FRONTEND_LABEL}"
 	
 	for SERVICE in ${SERVICES}
 	do
 		SERVICE=$(echo ${SERVICE} | tr -d '"')
 		swarm_force_service_reload ${SERVICE}
 	done
-	
-	sleep 30 # Waiting for service update...
-}
-
-function get_filtered_data {
-	local result=$1
-	
-	local request=${2?missing request}
-	local filter=${3?missing filter}
-	
-	local content=$(curl -sg --unix-socket ${DOCKER_SOCK} http://docker/${request}?filters=${filter} | jq .)
-	
-	eval $result="'${content}'"
-}
-
-function get_service {
-	local result=$1
-	
-	local id=${2?missing id}
-	
-	local content=$(curl -sg --unix-socket ${DOCKER_SOCK} http://docker/services/${id} | jq .)
-	
-	eval $result="'${content}'"
 }
 
 function generate_new_file {
@@ -82,85 +135,6 @@ function generate_new_file {
 	echo ${INPUT} | mustache - ${TEMPLATE} > ${TEMP_FILE}
 	
 	eval $result="'${TEMP_FILE}'"
-}
-
-function get_service_data {
-	local result=$1
-	get_filtered_data SERVICES "services" "{%22label%22:[%22${SLCT_LABEL}%22]}"
-	
-	local SERVICE_NAMES=$(echo $SERVICES | jq .[].Spec.Name | tr -d '"')
-	
-	local SERVICE_RESULT=$(echo "[]" | jq .)
-	
-	for SERVICE_NAME in ${SERVICE_NAMES}
-	do
-			local SERVICE_NAME=$(echo ${SERVICE_NAME} | tr -d '"')
-			get_service SERVICE_DATA ${SERVICE_NAME}
-
-			local SERVICE=$(echo ${SERVICE_DATA} | jq "
-def process(f):
-	if (f | type == \"array\") then 
-		[ 
-			f | 
-			group_by(.key[0])[] | 
-			if (try (.[0].key[0] | tonumber) catch -1) == -1 then
-				if (. | length == 1) then 
-					{ key: .[0].key[0], value: .[0].value }
-				else
-					{ key: .[0].key[0], value: process( [ .[] | { key: .key[1:], value: .value } ] ) | ( if ( try from_entries catch -1 ) == -1 then . else from_entries end ) }
-				end
-			else
-				process( [ .[] | { key: .key[1:], value: .value } ] ) | ( try from_entries catch . )
-			end
-		]
-	else 
-		.
-	end;
-
-			{ 
-				name:.Spec.Name,
-				labels: [ .Spec.Labels | to_entries[] | select( .key | startswith(\"${LABEL_PREFIX}.\") ) | .key |= ( . | ltrimstr(\"${LABEL_PREFIX}.\") | split(\".\") ) ] | process(.) | from_entries,
-				data:. 
-			}")
-
-			get_filtered_data HOSTS "tasks" "{%22service%22:[%22${SERVICE_NAME}%22]}"
-			local HOSTS=$(echo ${HOSTS} | jq "{ tasks:[ .[] | select(.Status.State == \"running\" and .DesiredState == \"running\") | { id:.ID, slot: .Slot, hostname:\"${SERVICE_NAME}.\(.Slot | tostring).\(.ID)\", data:. } ] }")
-			
-			local SERVICE=$(echo "[${SERVICE}, ${HOSTS}]" | jq add)
-			local SERVICE=$(echo "${SERVICE}" | jq ".isActive = ((.tasks | length) != 0)")
-			local SERVICE_RESULT=$(echo "[ ${SERVICE_RESULT}, [ ${SERVICE} ] ]" | jq add)
-	done
-	
-	local CERTHOST=$(hostname)
-	
-	if [ "$(ls ${CERTSTORE} | wc -l)" == 0 ]
-	then
-		local ENABLE_SSL=false
-	else
-		local ENABLE_SSL=true
-	fi
-	local SERVICE_RESULT=$(echo ${SERVICE_RESULT} | jq "{services:., enableSSL:${ENABLE_SSL}, certhost:\"${CERTHOST}\", recordtag:\"${ROOT_LABEL}\"}")
-	eval $result="'${SERVICE_RESULT}'"
-}
-
-function update_dns {
-	if [ "${MYSQL_HOST}" != "disabled" ]
-	then
-		local TEMPLATE=/etc/swarm-gen/updatepdns.sql.mustache
-		local OUTPUT=/etc/swarm-gen/updatepdns.sql
-		
-		generate_new_file NEW_CONF ${OUTPUT} ${TEMPLATE} "${DATA}"
-
-		handle_file_change CHANGED ${NEW_CONF} ${OUTPUT}
-
-		if [ "${CHANGED}" != "0" ]
-		then
-			echo "Updateing PowerDNS"
-			mysql --host="${MYSQL_HOST}" --user="${MYSQL_USER}" --password="${MYSQL_PASS}" --database="${MYSQL_DB}" < ${OUTPUT}
-		else
-			echo "Skiping PowerDNS update"
-		fi
-	fi
 }
 
 function handle_file_change {
@@ -184,118 +158,120 @@ function handle_file_change {
 	fi
 }
 
-function handle_nginx {
-	local TEMPLATE=/etc/swarm-gen/nginx.conf.mustache
-	local OUTPUT_FILE=/etc/nginx/conf.d/hosts.conf
-	
-	generate_new_file NEW_FILE ${OUTPUT_FILE} ${TEMPLATE} "${DATA}"
-	
-	handle_file_change CHANGED ${NEW_FILE} ${OUTPUT_FILE}
-	
-	if [ "${CHANGED}" != "0" ]
-	then
-		echo "Configuration updated."
-		notify_containers
-	else
-		echo "Configuration unchanged."
-	fi
+function fetch_files {
+	rm -rf "${FILESTORE}"
+	mkdir -p "${FILESTORE}"
+	local FILE_DATA=$(curl -s --get --data-raw "recurse" "${FILE_SRC}" | jq -r ".[]? | [(.Key | split(\"/\") | del(.[0]) | join(\"/\")), (.Value)] | join(\":\")")
+	for row in ${FILE_DATA}; do
+		local CUR_FILE=$(echo "${row}" | cut -d ":" -f 1)
+		echo "${row}" | cut -d ":" -f 2 | base64 -d > ${FILESTORE}/${CUR_FILE}
+	done
 }
 
-function handle_haproxy {
-	local TEMPLATE_CONF=/etc/swarm-gen/haproxy.cfg.mustache
-	local TEMPLATE_MAP=/etc/swarm-gen/http11.map.mustache
-	local TEMPLATE2_MAP=/etc/swarm-gen/http2.map.mustache
-	local OUTPUT_CONF=/usr/local/etc/haproxy/haproxy.cfg
-	local OUTPUT_MAP=/usr/local/etc/haproxy/http11.map
-	local OUTPUT2_MAP=/usr/local/etc/haproxy/http2.map
-	
-	generate_new_file NEW_CONF ${OUTPUT_CONF} ${TEMPLATE_CONF} "${DATA}"
-	generate_new_file NEW_MAP ${OUTPUT_MAP} ${TEMPLATE_MAP} "${DATA}"
-	generate_new_file NEW_MAP2 ${OUTPUT2_MAP} ${TEMPLATE2_MAP} "${DATA}"
-		
-	cp /etc/swarm-gen/*.http /usr/local/etc/haproxy/
-	
-	handle_file_change CONF_CHANGED ${NEW_CONF} ${OUTPUT_CONF}
-	handle_file_change MAP_CHANGED ${NEW_MAP} ${OUTPUT_MAP}
-	handle_file_change MAP2_CHANGED ${NEW_MAP2} ${OUTPUT2_MAP}
-	
-	if [ "${CONF_CHANGED}" != "0" ] || [ "${MAP_CHANGED}" != "0" ] || [ "${MAP2_CHANGED}" != "0" ]
-	then
-		echo "Configuration updated."
-		notify_containers
-	else
-		echo "Configuration unchanged."
-	fi
+function fetch_certs {
+	rm -rf "${CERTSTORE}"
+	mkdir -p "${CERTSTORE}"
+	local FILE_DATA=$(curl -s --get --data-raw "recurse" "${CERT_SRC}" | jq -r ".[]? | [(.Key | split(\"/\") | del(.[0]) | join(\"/\")), (.Value)] | join(\":\")")
+	for row in ${FILE_DATA}; do
+		local CUR_FILE=$(echo "${row}" | cut -d ":" -f 1)
+		echo "${row}" | cut -d ":" -f 2 | base64 -d > ${CERTSTORE}/${CUR_FILE}
+	done
 }
 
-function join_by { local IFS="$1"; shift; echo "$*"; }
-
-function update_certificates {
-	if [ "${HOSTMASTER}" != "disabled" ]
+function put_file {
+	local KEY=${1:-error}
+	if [ "${KEY}" == "error" ]
 	then
-		local TEMPLATE=/etc/swarm-gen/domainlist.mustache
-		local OUTPUT=/etc/swarm-gen/domainlist
+		echo "No KEY set." && exit 1
+	fi
+	local FILENAME=${2:-error}
+	if [ "${FILENAME}" == "error" ]
+	then
+		echo "No FILENAME set." && exit 1
+	fi
+	local result=$(curl -s --request PUT --data-binary @$FILENAME "${CONSUL}/v1/kv/${KEY}")
+}
 
-		generate_new_file NEW_FILE "${OUTPUT}" "${TEMPLATE}" "${DATA}"
+function update_config {
+	if [ "${GENERATOR}" != "disabled" ]
+	then
+		fetch_files
+		fetch_certs
 
-		handle_file_change CHANGED "${NEW_FILE}" "${OUTPUT}"
-		
-		if [ "${CHANGED}" != "0" ]
-		then	
-			echo "Generating certificates"
-			
-			mapfile -t requests <<< $(cat ${OUTPUT})
-			
-			for entries in "${requests[@]}"
-			do
-				local entry=(${entries})
-				local DOMAINS=$(for k in "${entry[@]}"; do echo "-d ${k}"; done)
-				local DOMAINS=$(join_by " " ${DOMAINS})
-				certbot certonly --noninteractive --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" --expand ${DOMAINS}
-			done
-			
-			rm -rf ${CERTSTORE}/*
-			
-			if [ -d /etc/letsencrypt/live ]
-				then
+		local CONF_DATA=$(curl -s --get --data-raw "recurse" "${CONF_SRC}" | jq "[ .[]? | { key: .Key | split(\"/\") | del(.[0]), val: (.Value | if length > 0 then . | @base64d else \"\" end) } ] | [ group_by(.key[0])[] | { key: (.[0].key[0]), value: map([(del(.key[0]) | .key | join(\"/\")), .val] | join(\" \")) } ] | { data: . }")
+		local CONF_TEMPLATE=${TEMPSTORE}/haproxy.cfg.mustache
+		local CONF_OUTPUT=${CONFSTORE}/haproxy.cfg
+		local H1_OUTPUT=${CONFSTORE}/http11.map
+		local H2_OUTPUT=${CONFSTORE}/http2.map
+		local H1_NEW=${H1_OUTPUT}.new
+		local H2_NEW=${H2_OUTPUT}.new
 				
-				for entries in "${requests[@]}"
-				do
-					local entry=(${entries})
-					local folder="/etc/letsencrypt/live/${entry[0]}"
-					if [ -d "${folder}" ]
-					then
-						local newpath="${CERTSTORE}/${entry[0]}"
-						cat ${folder}/fullchain.pem ${folder}/privkey.pem > ${newpath}
-					fi
-				done
-			else
-				rm ${OUTPUT}
-			fi
+		generate_new_file CONF_NEW ${CONF_OUTPUT} ${CONF_TEMPLATE} "${CONF_DATA}"
+		
+		local DOMAIN_DATA=$(curl -s --get --data-raw "recurse" "${DOMAINS_SRC}" | jq -r "[ .[] | .Key = (.Key | split(\"/\") | del(.[0]) | join(\"/\")) | .Domain = (.Key | split(\"/\") | .[0]) | .Key = (.Key | split(\"/\") | del(.[0]) | join(\"/\")) | .Value = (if .Value | length > 0 then .Value | @base64d else .Value end) ] | [ group_by(.Domain)[] | ([ {"domain": .[0].Domain}, (.[] | {(.Key): (.Value)}) ] | add) ]")
+		
+		echo "${DOMAIN_DATA}" | jq -r ".[] | [ .domain, .[\"backend/h1\"] ] | join(\" \")" > ${H1_NEW}
+		echo "${DOMAIN_DATA}" | jq -r ".[] | [ .domain, .[\"backend/h2\"] ] | join(\" \")" > ${H2_NEW}
+
+		handle_file_change CONF_CHANGED ${CONF_NEW} ${CONF_OUTPUT}
+		handle_file_change H1_CHANGED ${H1_NEW} ${H1_OUTPUT}
+		handle_file_change H2_CHANGED ${H2_NEW} ${H2_OUTPUT}
+		
+		if [ "${CONF_CHANGED}" != "0" ] || [ "${H1_CHANGED}" != "0" ] || [ "${H2_CHANGED}" != "0" ]
+		then
+			echo "Configuration updated."
+			notify_containers
 		fi
 	fi
 }
 
-function cleanup { exit 0; }
+function update_dns {
+	if [ "${MYSQL_HOST}" != "disabled" ]
+	then
+		local DOMAIN_DATA=$(curl -s --get --data-raw "recurse" "${DOMAINS_SRC}" | jq -r "[ .[] | .Key = (.Key | split(\"/\") | del(.[0]) | join(\"/\")) | .Domain = (.Key | split(\"/\") | .[0]) | .Key = (.Key | split(\"/\") | del(.[0]) | join(\"/\")) | .Value = (if .Value | length > 0 then .Value | @base64d else .Value end) ] | [ group_by(.Domain)[] | ([ {"domain": .[0].Domain}, (.[] | {(.Key): (.Value)}) ] | add) ]")
+		local DNS_DATA=$(echo "${DOMAIN_DATA}" | jq "{ recordtag: \"gmbh.bot.haproxy\" , hosts: [ .[] | { id: .id, domain: .domain, endpoint: .endpoint } ] }")
+		local DNS_TEMPLATE=${TEMPSTORE}/updatepdns.sql.mustache
+		local DNS_UPDATE=${TEMPSTORE}/updatepdns.sql
+		local DNS_UPDATE_NEW=${DNS_UPDATE}.new
+		
+		generate_new_file DNS_UPDATE_NEW ${DNS_UPDATE} ${DNS_TEMPLATE} "${DNS_DATA}"
+		
+		handle_file_change CHANGED ${DNS_UPDATE_NEW} ${DNS_UPDATE}
+		
+		if [ "${CHANGED}" != "0" ]
+		then
+			echo mysql --host="${MYSQL_HOST}" --user="${MYSQL_USER}" --password="${MYSQL_PASS}" --database="${MYSQL_DB}" < ${DNS_UPDATE}
+		fi
+	fi
+}
 
-trap cleanup SIGINT SIGTERM
+function update_certificates {
+	if [ "${HOSTMASTER}" != "disabled" ]
+	then
+		local DOMAIN_DATA=$(curl -s --get --data-raw "recurse" "${DOMAINS_SRC}" | jq -r "[ .[] | .Key = (.Key | split(\"/\") | del(.[0]) | join(\"/\")) | .Domain = (.Key | split(\"/\") | .[0]) | .Key = (.Key | split(\"/\") | del(.[0]) | join(\"/\")) | .Value = (if .Value | length > 0 then .Value | @base64d else .Value end) ] | [ group_by(.Domain)[] | ([ {"domain": .[0].Domain}, (.[] | {(.Key): (.Value)}) ] | add) ]")
+		mapfile -t REQUESTS <<< $(echo "${DOMAIN_DATA}" | jq -r "[ .[] | { domain: .domain, backend: .[\"backend/h1\"] }, { domain: .domain, backend: .[\"backend/h2\"] } ] | group_by(.backend)[] | unique_by(.domain) | [ .[] | .domain ] | join(\" \")")
+		for ENTRIES in "${REQUESTS[@]}"
+		do
+			local ENTRY=(${ENTRIES})
+			local DOMAINS=$(for k in "${ENTRY[@]}"; do echo "-d ${k}"; done)
+			local DOMAINS=$(join_by " " ${DOMAINS})
+			certbot certonly --dry-run --noninteractive --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" --expand ${DOMAINS}
+			local CURRENT_FOLDER=/etc/letsencrypt/live/${ENTRY[0]}
+			if [ -d ${CURRENT_FOLDER} ]
+			then
+				local CURRENT_CERT=${CERTSTORE}/${ENTRY[0]}
+				cat ${CURRENT_FOLDER}/fullchain.pem ${CURRENT_FOLDER}/privkey.pem > ${CURRENT_CERT}
+				put_file "${CERT_KEY}/${ENTRY[0]}" "${CURRENT_CERT}"
+				rm -rf "${CURRENT_CERT}"
+			fi
+		done
+	fi
+}
 
 while [ 1 ]
 do
-	mkdir -p ${CERTSTORE}
-
-	get_service_data DATA
-		
 	update_dns
-	
-	if [ "${GENERATOR}" == "haproxy" ]
-	then
-		handle_haproxy
-	else
-		handle_nginx
-	fi
-	
 	update_certificates
-	
-	sleep 30
+	update_config
+	sleep 60
 done
