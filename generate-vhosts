@@ -255,7 +255,7 @@ function update_certificates {
 			local ENTRY=(${ENTRIES})
 			local DOMAINS=$(for k in "${ENTRY[@]}"; do echo "-d ${k}"; done)
 			local DOMAINS=$(join_by " " ${DOMAINS})
-			certbot certonly --dry-run --noninteractive --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" --expand ${DOMAINS}
+			certbot certonly --noninteractive --agree-tos --standalone --http-01-port 80 --preferred-challenges http --email \"${HOSTMASTER}\" --expand ${DOMAINS}
 			local CURRENT_FOLDER=/etc/letsencrypt/live/${ENTRY[0]}
 			if [ -d ${CURRENT_FOLDER} ]
 			then
