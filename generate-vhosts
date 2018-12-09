@@ -259,6 +259,7 @@ function update_certificates {
 			local CURRENT_FOLDER=/etc/letsencrypt/live/${ENTRY[0]}
 			if [ -d ${CURRENT_FOLDER} ]
 			then
+				mkdir -p ${CERTSTORE}
 				local CURRENT_CERT=${CERTSTORE}/${ENTRY[0]}
 				cat ${CURRENT_FOLDER}/fullchain.pem ${CURRENT_FOLDER}/privkey.pem > ${CURRENT_CERT}
 				put_file "${CERT_KEY}/${ENTRY[0]}" "${CURRENT_CERT}"
