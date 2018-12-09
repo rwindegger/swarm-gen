@@ -240,7 +240,7 @@ function update_dns {
 		
 		if [ "${CHANGED}" != "0" ]
 		then
-			echo mysql --host="${MYSQL_HOST}" --user="${MYSQL_USER}" --password="${MYSQL_PASS}" --database="${MYSQL_DB}" < ${DNS_UPDATE}
+			mysql --host="${MYSQL_HOST}" --user="${MYSQL_USER}" --password="${MYSQL_PASS}" --database="${MYSQL_DB}" < ${DNS_UPDATE}
 		fi
 	fi
 }
